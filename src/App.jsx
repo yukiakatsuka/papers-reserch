@@ -16,9 +16,12 @@ import {
   X,
 } from "lucide-react";
 
-const STORAGE_KEY = "paperswipe-v1";
-const DISMISSED_KEY = "paperswipe-dismissed-v1";
-const SAVED_KEY = "paperswipe-saved-v1";
+const STORAGE_KEY = "paperswipe-real-v2";
+const DISMISSED_KEY = "paperswipe-dismissed-real-v2";
+const SAVED_KEY = "paperswipe-saved-real-v2";
+const PAPER_TYPES = new Set(["article", "preprint"]);
+const CROSSREF_PAPER_TYPES = new Set(["journal-article", "posted-content"]);
+const OPENALEX_SOURCE = "OpenAlex";
 
 const genres = [
   {
@@ -65,95 +68,12 @@ const genres = [
   },
 ];
 
-const samplePapers = [
-  {
-    id: "sample-1",
-    genre: "ai",
-    source: "arXiv",
-    topic: "cs.LG",
-    date: "May 24, 2024",
-    title: "Scaling Laws for Diffusion Models at Large Batch Sizes",
-    tags: ["diffusion models", "scaling laws", "generative models"],
-    authors: "J. Liu, A. Kumar, M. Chen, S. Rajeswaran, C. Finn, S. Ermon",
-    institution: "Stanford University, Google DeepMind, UC Berkeley",
-    abstract:
-      "We identify distinct scaling regimes that govern sample quality and training efficiency for diffusion models as model size, dataset size, and batch size increase.",
-    url: "https://arxiv.org/abs/2405.12345",
-  },
-  {
-    id: "sample-2",
-    genre: "economics",
-    source: "OpenAlex",
-    topic: "Econ",
-    date: "Jun 02, 2024",
-    title: "Monetary Policy Shocks and Household Portfolio Rebalancing",
-    tags: ["monetary policy", "households", "risk assets"],
-    authors: "M. Sato, L. Anders, R. Nakamura",
-    institution: "Hitotsubashi University, London School of Economics",
-    abstract:
-      "Using high-frequency identification, we estimate how rate shocks reshape savings, equity exposure, and bond duration across income groups.",
-    url: "https://openalex.org/W4389210092",
-  },
-  {
-    id: "sample-3",
-    genre: "investing",
-    source: "SSRN",
-    topic: "Finance",
-    date: "Apr 18, 2024",
-    title: "Factor Crowding, Liquidity Premia, and ETF Flow Reversals",
-    tags: ["factor investing", "liquidity", "ETF flows"],
-    authors: "N. Park, E. Watanabe, S. Brooks",
-    institution: "University of Chicago Booth, Tokyo University",
-    abstract:
-      "We document that crowded style exposures amplify liquidity premia during ETF flow reversals and compress expected returns afterward.",
-    url: "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4567890",
-  },
-  {
-    id: "sample-4",
-    genre: "drug-discovery",
-    source: "bioRxiv",
-    topic: "Cheminformatics",
-    date: "May 09, 2024",
-    title: "Active Learning for Kinase Inhibitor Discovery with Sparse Assays",
-    tags: ["active learning", "kinase", "sparse assays"],
-    authors: "A. Reyes, H. Mori, P. Gupta, L. Tran",
-    institution: "Broad Institute, Kyoto University",
-    abstract:
-      "A batch active-learning loop prioritizes compounds under assay budget limits while preserving chemical diversity in hit expansion.",
-    url: "https://www.biorxiv.org/content/10.1101/2024.05.09.000001v1",
-  },
-  {
-    id: "sample-5",
-    genre: "medicine",
-    source: "PubMed",
-    topic: "Clinical AI",
-    date: "Mar 31, 2024",
-    title: "External Validation of Multimodal Models for Sepsis Prediction",
-    tags: ["sepsis", "validation", "multimodal model"],
-    authors: "K. Johnson, Y. Tanaka, R. Singh, M. Flores",
-    institution: "Mayo Clinic, University of Tokyo Hospital",
-    abstract:
-      "Across five hospitals, multimodal predictors improved early warning performance but showed calibration drift under changes in care pathways.",
-    url: "https://pubmed.ncbi.nlm.nih.gov/38600001/",
-  },
-  {
-    id: "sample-6",
-    genre: "statistics",
-    source: "arXiv",
-    topic: "stat.ME",
-    date: "Feb 14, 2024",
-    title: "Robust Bayesian Inference under Misspecified Treatment Assignment",
-    tags: ["bayesian inference", "causal effects", "robustness"],
-    authors: "S. Kline, T. Yamamoto, A. Gelman",
-    institution: "Columbia University, University of Washington",
-    abstract:
-      "The method couples prior predictive checks with sensitivity curves to stabilize treatment-effect estimates under misspecified assignment models.",
-    url: "https://arxiv.org/abs/2402.09876",
-  },
-];
-
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function readJson(key, fallback) {
@@ -183,6 +103,8 @@ function normalizeOpenAlexWork(work, genre) {
     id: work.id || `${genre.id}-${work.title}`,
     genre: genre.id,
     source,
+    sourceIndex: OPENALEX_SOURCE,
+    paperType: work.type || work.type_crossref || "article",
     topic: genre.label,
     date: work.publication_date
       ? new Date(work.publication_date).toLocaleDateString("en-US", {
@@ -204,6 +126,13 @@ function normalizeOpenAlexWork(work, genre) {
     abstract: invertAbstract(work.abstract_inverted_index) || fallbackAbstract(genre),
     url,
   };
+}
+
+function isPaperOrPreprint(work) {
+  return (
+    PAPER_TYPES.has(work.type) ||
+    CROSSREF_PAPER_TYPES.has(work.type_crossref)
+  );
 }
 
 function invertAbstract(index) {
@@ -230,32 +159,24 @@ async function fetchFreeDailyPapers() {
       url.searchParams.set("sort", "publication_date:desc");
       url.searchParams.set(
         "filter",
-        "from_publication_date:2023-01-01,type:article|preprint",
+        `from_publication_date:2023-01-01,to_publication_date:${todayKey()}`,
       );
       const response = await fetch(url);
       if (!response.ok) throw new Error(`OpenAlex ${response.status}`);
       const data = await response.json();
-      return (data.results || []).map((work) => normalizeOpenAlexWork(work, genre));
+      return (data.results || [])
+        .filter(isPaperOrPreprint)
+        .map((work) => normalizeOpenAlexWork(work, genre));
     }),
   );
 
   const papers = batches.flatMap((batch) =>
     batch.status === "fulfilled" ? batch.value : [],
   );
-  return papers.length ? papers : expandSamples();
-}
-
-function expandSamples() {
-  return Array.from({ length: 420 }, (_, index) => {
-    const paper = samplePapers[index % samplePapers.length];
-    const day = String((index % 27) + 1).padStart(2, "0");
-    return {
-      ...paper,
-      id: `${paper.id}-${index}`,
-      date: `Jun ${day}, 2026`,
-      title: index < samplePapers.length ? paper.title : `${paper.title}: Update ${index}`,
-    };
-  });
+  if (!papers.length) {
+    throw new Error("No article or preprint records were returned from OpenAlex.");
+  }
+  return papers;
 }
 
 function compactUrl(url) {
@@ -283,6 +204,15 @@ export function App() {
   const [index, setIndex] = useState(0);
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [status, setStatus] = useState("Preparing today's deck");
+  const [fetchState, setFetchState] = useState("loading");
+  const [fetchError, setFetchError] = useState("");
+  const [fetchMeta, setFetchMeta] = useState({
+    date: "",
+    time: "",
+    source: OPENALEX_SOURCE,
+    count: 0,
+    fromCache: false,
+  });
   const [lastFetch, setLastFetch] = useState("");
   const startPoint = useRef(null);
 
@@ -293,26 +223,21 @@ export function App() {
       if (cached?.date === todayKey() && cached?.papers?.length) {
         if (!mounted) return;
         setPapers(cached.papers);
+        setFetchMeta({
+          date: cached.date,
+          time: cached.time || "06:30",
+          source: cached.source || OPENALEX_SOURCE,
+          count: cached.papers.length,
+          fromCache: true,
+        });
         setLastFetch(cached.time || "06:30");
-        setStatus("Loaded today's free harvest");
+        setFetchState("ready");
+        setFetchError("");
+        setStatus("Loaded today's real-paper harvest");
         return;
       }
 
-      setStatus("Fetching free papers from OpenAlex");
-      const nextPapers = await fetchFreeDailyPapers();
-      if (!mounted) return;
-      const time = new Date().toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      });
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ date: todayKey(), time, papers: nextPapers }),
-      );
-      setPapers(nextPapers);
-      setLastFetch(time);
-      setStatus("Today fetched with free sources");
+      await refreshPapers({ isMounted: () => mounted });
     }
 
     hydrate();
@@ -329,6 +254,56 @@ export function App() {
     localStorage.setItem(DISMISSED_KEY, JSON.stringify(dismissed));
   }, [dismissed]);
 
+  async function refreshPapers(options = {}) {
+    const isMounted = options.isMounted || (() => true);
+    setFetchState("loading");
+    setFetchError("");
+    setStatus("Fetching real articles and preprints");
+
+    try {
+      const nextPapers = await fetchFreeDailyPapers();
+      if (!isMounted()) return;
+      const date = todayKey();
+      const time = new Date().toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      const meta = {
+        date,
+        time,
+        source: OPENALEX_SOURCE,
+        count: nextPapers.length,
+        fromCache: false,
+      };
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ ...meta, papers: nextPapers }),
+      );
+      setPapers(nextPapers);
+      setIndex(0);
+      setFetchMeta(meta);
+      setLastFetch(time);
+      setFetchState("ready");
+      setStatus("Fetched real articles and preprints");
+    } catch (error) {
+      if (!isMounted()) return;
+      setPapers([]);
+      setIndex(0);
+      setFetchMeta({
+        date: todayKey(),
+        time: "",
+        source: OPENALEX_SOURCE,
+        count: 0,
+        fromCache: false,
+      });
+      setLastFetch("");
+      setFetchState("error");
+      setFetchError(error.message || "OpenAlex fetch failed.");
+      setStatus("Fetch failed");
+    }
+  }
+
   const queue = useMemo(() => {
     const hidden = new Set([...saved, ...dismissed].map((paper) => paper.id));
     const available = papers.filter((paper) => !hidden.has(paper.id));
@@ -336,9 +311,9 @@ export function App() {
     return selected.length ? selected : available;
   }, [activeGenre, dismissed, papers, saved]);
 
-  const current = queue[index % Math.max(queue.length, 1)] || expandSamples()[0];
-  const next = queue[(index + 1) % Math.max(queue.length, 1)];
-  const totalToday = papers.length || 420;
+  const current = queue.length ? queue[index % queue.length] : null;
+  const next = queue.length ? queue[(index + 1) % queue.length] : null;
+  const totalToday = papers.length;
   const genreCounts = useMemo(() => {
     const counts = Object.fromEntries(genres.map((genre) => [genre.id, 0]));
     papers.forEach((paper) => {
@@ -348,6 +323,7 @@ export function App() {
   }, [papers]);
 
   function moveCard(direction) {
+    if (!current) return;
     const paper = current;
     if (direction === "save") {
       setSaved((items) =>
@@ -380,6 +356,7 @@ export function App() {
   }
 
   function openCurrent() {
+    if (!current) return;
     window.open(current.url, "_blank", "noopener,noreferrer");
   }
 
@@ -409,11 +386,19 @@ export function App() {
   }
 
   const rotation = Math.max(Math.min(drag.x / 18, 9), -9);
-  const progress = Math.min(saved.length + dismissed.length + 1, totalToday);
+  const progress = totalToday
+    ? Math.min(saved.length + dismissed.length + 1, totalToday)
+    : 0;
 
   return (
     <main className="app-shell">
-      <section className="phone-stage" aria-label="PaperSwipe iPhone app">
+      <section
+        className="phone-stage"
+        aria-label="PaperSwipe iPhone app"
+        style={{
+          "--card-art-image": `url("${import.meta.env.BASE_URL}research-card-texture.jpg")`,
+        }}
+      >
         <header className="topbar">
           <div>
             <h1>
@@ -421,17 +406,29 @@ export function App() {
             </h1>
             <p>{status}</p>
           </div>
-          <div className="daily-pill" aria-label="Daily fetch count">
+          <button
+            className="daily-pill"
+            aria-label="Refresh papers manually"
+            onClick={() => refreshPapers()}
+            disabled={fetchState === "loading"}
+          >
             <RefreshCcw size={18} />
-            <strong>Today {totalToday} papers</strong>
-          </div>
+            <strong>
+              {fetchState === "loading" ? "Fetching" : `Today ${totalToday} papers`}
+            </strong>
+          </button>
           <button className="icon-button" aria-label="Saved papers">
             <Bookmark size={23} />
             <small>{saved.length}</small>
           </button>
         </header>
 
-        <div className="refreshed">Refreshed at {lastFetch || "06:30"}</div>
+        <div className="refreshed">
+          Last updated {fetchMeta.date || "not yet"}
+          {lastFetch ? ` ${lastFetch}` : ""} · Source {fetchMeta.source} ·{" "}
+          {fetchMeta.count} records
+          {fetchMeta.fromCache ? " · cached" : ""}
+        </div>
 
         <nav className="genre-row" aria-label="Research genres">
           {genres.map((genre) => {
@@ -448,78 +445,115 @@ export function App() {
               >
                 <Icon size={24} strokeWidth={1.9} />
                 <span>{genre.label}</span>
-                <strong>{genreCounts[genre.id] || genre.count}</strong>
+                <strong>{genreCounts[genre.id] || 0}</strong>
               </button>
             );
           })}
         </nav>
 
         <section className="deck-area" aria-live="polite">
-          {next ? <div className="paper-card shadow-card shadow-one" /> : null}
-          <div className="paper-card shadow-card shadow-two" />
-          <article
-            className="paper-card active-card"
-            style={{
-              transform: `translate(${drag.x}px, ${drag.y}px) rotate(${rotation}deg)`,
-              transition: drag.active ? "none" : "transform 190ms ease",
-            }}
-            onPointerDown={beginDrag}
-            onPointerMove={updateDrag}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-          >
-            <div
-              className="swipe-label save-label"
-              style={{ opacity: Math.min(Math.max(drag.x / 90, 0), 1) }}
-            >
-              <BookmarkCheck size={22} />
-              Save
-            </div>
-            <div
-              className="swipe-label skip-label"
-              style={{ opacity: Math.min(Math.max(-drag.x / 90, 0), 1) }}
-            >
-              <X size={24} />
-              Skip
-            </div>
-            <div className="card-art" />
-            <div className="paper-body">
-              <div className="meta-line">
-                <span className="source">{compactSource(current.source)}</span>
-                <span>{current.topic}</span>
-                <time>{current.date}</time>
+          {current ? (
+            <>
+              {next ? <div className="paper-card shadow-card shadow-one" /> : null}
+              <div className="paper-card shadow-card shadow-two" />
+              <article
+                className="paper-card active-card"
+                style={{
+                  transform: `translate(${drag.x}px, ${drag.y}px) rotate(${rotation}deg)`,
+                  transition: drag.active ? "none" : "transform 190ms ease",
+                }}
+                onPointerDown={beginDrag}
+                onPointerMove={updateDrag}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+              >
+                <div
+                  className="swipe-label save-label"
+                  style={{ opacity: Math.min(Math.max(drag.x / 90, 0), 1) }}
+                >
+                  <BookmarkCheck size={22} />
+                  Save
+                </div>
+                <div
+                  className="swipe-label skip-label"
+                  style={{ opacity: Math.min(Math.max(-drag.x / 90, 0), 1) }}
+                >
+                  <X size={24} />
+                  Skip
+                </div>
+                <div className="card-art" />
+                <div className="paper-body">
+                  <div className="meta-line">
+                    <span className="source">{compactSource(current.source)}</span>
+                    <span>{current.topic}</span>
+                    <time>{current.date}</time>
+                  </div>
+                  <h2>{current.title}</h2>
+                  <div className="tag-row">
+                    {current.tags.slice(0, 3).map((tag) => (
+                      <span key={tag}>{tag}</span>
+                    ))}
+                    {current.tags.length > 3 ? (
+                      <span>+{current.tags.length - 3}</span>
+                    ) : null}
+                  </div>
+                  <p className="authors">
+                    {current.authors || "OpenAlex indexed authors"}
+                  </p>
+                  <p className="institution">{current.institution}</p>
+                  <p className="abstract">{current.abstract}</p>
+                  <div className="paper-link">
+                    <Link size={21} />
+                    <a href={current.url} target="_blank" rel="noreferrer">
+                      {compactUrl(current.url)}
+                    </a>
+                    <ArrowUpRight size={22} />
+                  </div>
+                </div>
+              </article>
+            </>
+          ) : (
+            <section className={`empty-card ${fetchState}`}>
+              <div className="card-art" />
+              <div className="empty-body">
+                <strong>{fetchState === "loading" ? "取得中" : "取得失敗"}</strong>
+                <h2>
+                  {fetchState === "loading"
+                    ? "実在論文をOpenAlexから取得しています"
+                    : "実在するarticle / preprintを取得できませんでした"}
+                </h2>
+                <p>
+                  {fetchState === "loading"
+                    ? "デモfallbackは使わず、OpenAlexで確認できる実データだけを表示します。"
+                    : fetchError || "ネットワークまたはOpenAlexの応答を確認してください。"}
+                </p>
+                <button onClick={() => refreshPapers()} disabled={fetchState === "loading"}>
+                  <RefreshCcw size={18} />
+                  手動更新
+                </button>
               </div>
-              <h2>{current.title}</h2>
-              <div className="tag-row">
-                {current.tags.slice(0, 3).map((tag) => (
-                  <span key={tag}>{tag}</span>
-                ))}
-                {current.tags.length > 3 ? <span>+{current.tags.length - 3}</span> : null}
-              </div>
-              <p className="authors">{current.authors || "OpenAlex indexed authors"}</p>
-              <p className="institution">{current.institution}</p>
-              <p className="abstract">{current.abstract}</p>
-              <div className="paper-link">
-                <Link size={21} />
-                <a href={current.url} target="_blank" rel="noreferrer">
-                  {compactUrl(current.url)}
-                </a>
-                <ArrowUpRight size={22} />
-              </div>
-            </div>
-          </article>
+            </section>
+          )}
         </section>
 
         <section className="actions" aria-label="Paper actions">
-          <button className="action-button skip" onClick={() => moveCard("skip")}>
+          <button
+            className="action-button skip"
+            onClick={() => moveCard("skip")}
+            disabled={!current}
+          >
             <X size={42} />
             <span>Not interested</span>
           </button>
-          <button className="action-button open" onClick={openCurrent}>
+          <button className="action-button open" onClick={openCurrent} disabled={!current}>
             <ArrowUpRight size={39} />
             <span>Open</span>
           </button>
-          <button className="action-button save" onClick={() => moveCard("save")}>
+          <button
+            className="action-button save"
+            onClick={() => moveCard("save")}
+            disabled={!current}
+          >
             <Bookmark size={40} />
             <span>Save</span>
           </button>
@@ -547,8 +581,8 @@ export function App() {
             <span>{dismissed.length} skipped</span>
           </div>
           <p>
-            Free plan: automatic daily harvest, OpenAlex live fetch, arXiv/PubMed
-            URLs retained when available.
+            Free plan: OpenAlex live fetch only. No demo fallback. Showing article
+            and preprint records that include real source URLs.
           </p>
         </aside>
       </section>
