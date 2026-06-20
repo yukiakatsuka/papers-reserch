@@ -22,6 +22,8 @@ const SAVED_KEY = "paperswipe-saved-real-v2";
 const PAPER_TYPES = new Set(["article", "preprint"]);
 const CROSSREF_PAPER_TYPES = new Set(["journal-article", "posted-content"]);
 const OPENALEX_SOURCE = "OpenAlex";
+const CROSSREF_SOURCE = "Crossref";
+const POLITE_EMAIL = "paperswipe@example.com";
 
 const genres = [
   {
@@ -150,13 +152,60 @@ function fallbackAbstract(genre) {
   return `A recent open-access scholarly work related to ${genre.label}. Open the source URL to review the full paper, metadata, and linked publication record.`;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function normalizeCrossrefWork(item, genre) {
+  const title = item.title?.[0] || "Untitled paper";
+  const published =
+    item.published?.["date-parts"]?.[0] ||
+    item["published-print"]?.["date-parts"]?.[0] ||
+    item["published-online"]?.["date-parts"]?.[0];
+  const date = published
+    ? new Date(published[0], (published[1] || 1) - 1, published[2] || 1)
+    : null;
+  const authors = (item.author || [])
+    .slice(0, 5)
+    .map((author) => [author.given, author.family].filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join(", ");
+  const url = item.URL || (item.DOI ? `https://doi.org/${item.DOI}` : "");
+
+  return {
+    id: item.DOI || item.URL || `${genre.id}-${title}`,
+    genre: genre.id,
+    source: item["container-title"]?.[0] || CROSSREF_SOURCE,
+    sourceIndex: CROSSREF_SOURCE,
+    paperType: item.type === "posted-content" ? "preprint" : "article",
+    topic: genre.label,
+    date: date
+      ? date.toLocaleDateString("en-US", {
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+        })
+      : "Recent",
+    title,
+    tags: [genre.label, item.type || "journal-article", "real record"],
+    authors,
+    institution: item.publisher || CROSSREF_SOURCE,
+    abstract:
+      item.abstract?.replace(/<[^>]+>/g, "").slice(0, 280) ||
+      `A ${item.type || "journal article"} record indexed by Crossref for ${genre.label}.`,
+    url,
+  };
+}
+
 async function fetchFreeDailyPapers() {
-  const batches = await Promise.allSettled(
-    genres.map(async (genre) => {
+  const papers = [];
+  for (const genre of genres) {
+    try {
       const url = new URL("https://api.openalex.org/works");
       url.searchParams.set("search", genre.query);
-      url.searchParams.set("per-page", "80");
+      url.searchParams.set("per-page", "35");
       url.searchParams.set("sort", "publication_date:desc");
+      url.searchParams.set("mailto", POLITE_EMAIL);
       url.searchParams.set(
         "filter",
         `from_publication_date:2023-01-01,to_publication_date:${todayKey()}`,
@@ -164,19 +213,52 @@ async function fetchFreeDailyPapers() {
       const response = await fetch(url);
       if (!response.ok) throw new Error(`OpenAlex ${response.status}`);
       const data = await response.json();
-      return (data.results || [])
-        .filter(isPaperOrPreprint)
-        .map((work) => normalizeOpenAlexWork(work, genre));
-    }),
-  );
+      papers.push(
+        ...(data.results || [])
+          .filter(isPaperOrPreprint)
+          .map((work) => normalizeOpenAlexWork(work, genre)),
+      );
+    } catch {
+      papers.push(...(await fetchCrossrefPapers(genre)));
+    }
+    await sleep(350);
+  }
 
-  const papers = batches.flatMap((batch) =>
-    batch.status === "fulfilled" ? batch.value : [],
-  );
   if (!papers.length) {
-    throw new Error("No article or preprint records were returned from OpenAlex.");
+    throw new Error("No article or preprint records were returned from OpenAlex or Crossref.");
   }
   return papers;
+}
+
+async function fetchCrossrefPapers(genre) {
+  const rowsPerType = 22;
+  const types = ["journal-article", "posted-content"];
+  const results = [];
+
+  for (const type of types) {
+    const url = new URL("https://api.crossref.org/works");
+    url.searchParams.set("query.bibliographic", genre.query);
+    url.searchParams.set("rows", String(rowsPerType));
+    url.searchParams.set("sort", "published");
+    url.searchParams.set("order", "desc");
+    url.searchParams.set("mailto", POLITE_EMAIL);
+    url.searchParams.set(
+      "filter",
+      `from-pub-date:2023-01-01,until-pub-date:${todayKey()},type:${type}`,
+    );
+
+    const response = await fetch(url);
+    if (!response.ok) continue;
+    const data = await response.json();
+    results.push(
+      ...(data.message?.items || [])
+        .filter((item) => item.URL || item.DOI)
+        .map((item) => normalizeCrossrefWork(item, genre)),
+    );
+    await sleep(180);
+  }
+
+  return results;
 }
 
 function compactUrl(url) {
@@ -237,7 +319,7 @@ export function App() {
         return;
       }
 
-      await refreshPapers({ isMounted: () => mounted });
+      await refreshPapers({ isMounted: () => mounted, staleCache: cached });
     }
 
     hydrate();
@@ -272,7 +354,7 @@ export function App() {
       const meta = {
         date,
         time,
-        source: OPENALEX_SOURCE,
+        source: sourceSummary(nextPapers),
         count: nextPapers.length,
         fromCache: false,
       };
@@ -288,6 +370,22 @@ export function App() {
       setStatus("Fetched real articles and preprints");
     } catch (error) {
       if (!isMounted()) return;
+      if (options.staleCache?.papers?.length) {
+        setPapers(options.staleCache.papers);
+        setIndex(0);
+        setFetchMeta({
+          date: options.staleCache.date || "previous",
+          time: options.staleCache.time || "",
+          source: options.staleCache.source || "Previous real data",
+          count: options.staleCache.papers.length,
+          fromCache: true,
+        });
+        setLastFetch(options.staleCache.time || "");
+        setFetchState("ready");
+        setFetchError(error.message || "Live fetch failed.");
+        setStatus("Using previous real-paper harvest");
+        return;
+      }
       setPapers([]);
       setIndex(0);
       setFetchMeta({
@@ -302,6 +400,11 @@ export function App() {
       setFetchError(error.message || "OpenAlex fetch failed.");
       setStatus("Fetch failed");
     }
+  }
+
+  function sourceSummary(items) {
+    const sources = [...new Set(items.map((paper) => paper.sourceIndex).filter(Boolean))];
+    return sources.length ? sources.join(" + ") : OPENALEX_SOURCE;
   }
 
   const queue = useMemo(() => {
