@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.npm-cache/
+.server.pid
+vite.log
+vite.err.log
+qa-*.png
+verify-pwa.cjs
