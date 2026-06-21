@@ -8,6 +8,7 @@ PaperSwipe is an iPhone-first PWA for swiping through free daily research papers
 - Right swipe / Save
 - Left swipe / Not interested
 - Paper title and URL always visible
+- Japanese translated title shown above the original title
 - Genres: AI, economics, investing, drug discovery, medicine, statistics
 - Daily free harvest with local one-day cache
 - OpenAlex live fetch with Crossref real-data fallback

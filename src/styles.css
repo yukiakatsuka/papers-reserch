@@ -282,18 +282,42 @@ button {
   text-overflow: ellipsis;
 }
 
-.paper-body h2 {
+.title-stack {
   margin: 12px 0 11px;
+  display: grid;
+  gap: 5px;
+}
+
+.title-ja {
+  margin: 0;
   color: #141619;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
-  font-size: 24px;
-  line-height: 1.06;
+  font-size: 22px;
+  line-height: 1.12;
   letter-spacing: 0;
   font-weight: 640;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.title-original {
+  margin: 0;
+  color: #5e646d;
+  font-size: 13px;
+  line-height: 1.28;
+  font-weight: 700;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.translation-note {
+  color: #08714a;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .tag-row {
@@ -623,8 +647,8 @@ button {
     height: 96px;
   }
 
-  .paper-body h2 {
-    font-size: 22px;
+  .title-ja {
+    font-size: 20px;
     -webkit-line-clamp: 2;
   }
 

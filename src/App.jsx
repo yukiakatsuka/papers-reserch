@@ -19,6 +19,7 @@ import {
 const STORAGE_KEY = "paperswipe-real-v2";
 const DISMISSED_KEY = "paperswipe-dismissed-real-v2";
 const SAVED_KEY = "paperswipe-saved-real-v2";
+const TRANSLATION_KEY = "paperswipe-title-ja-v1";
 const PAPER_TYPES = new Set(["article", "preprint"]);
 const CROSSREF_PAPER_TYPES = new Set(["journal-article", "posted-content"]);
 const OPENALEX_SOURCE = "OpenAlex";
@@ -278,6 +279,65 @@ function compactSource(source) {
   return clean.slice(0, 15);
 }
 
+function hasJapanese(text) {
+  return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
+}
+
+function readTranslationCache() {
+  return readJson(TRANSLATION_KEY, {});
+}
+
+function writeTranslationCache(cache) {
+  try {
+    localStorage.setItem(TRANSLATION_KEY, JSON.stringify(cache));
+  } catch {
+    // Translation cache is nice-to-have; the English title remains available.
+  }
+}
+
+async function translateTitleToJapanese(title) {
+  if (!title || hasJapanese(title)) return title;
+  const cache = readTranslationCache();
+  if (cache[title]) return cache[title];
+
+  const translated =
+    (await translateWithGoogleAuto(title).catch(() => "")) ||
+    (await translateWithMyMemory(title).catch(() => ""));
+  if (!translated || translated.toLowerCase() === title.toLowerCase()) {
+    throw new Error("No Japanese translation returned.");
+  }
+
+  const nextCache = { ...cache, [title]: translated };
+  writeTranslationCache(nextCache);
+  return translated;
+}
+
+async function translateWithGoogleAuto(title) {
+  const url = new URL("https://translate.googleapis.com/translate_a/single");
+  url.searchParams.set("client", "gtx");
+  url.searchParams.set("sl", "auto");
+  url.searchParams.set("tl", "ja");
+  url.searchParams.set("dt", "t");
+  url.searchParams.set("q", title);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Google translation ${response.status}`);
+  const data = await response.json();
+  return (data?.[0] || [])
+    .map((segment) => segment?.[0] || "")
+    .join("")
+    .trim();
+}
+
+async function translateWithMyMemory(title) {
+  const url = new URL("https://api.mymemory.translated.net/get");
+  url.searchParams.set("q", title);
+  url.searchParams.set("langpair", "en|ja");
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`MyMemory translation ${response.status}`);
+  const data = await response.json();
+  return data.responseData?.translatedText?.trim() || "";
+}
+
 export function App() {
   const [activeGenre, setActiveGenre] = useState("ai");
   const [papers, setPapers] = useState([]);
@@ -288,6 +348,8 @@ export function App() {
   const [status, setStatus] = useState("Preparing today's deck");
   const [fetchState, setFetchState] = useState("loading");
   const [fetchError, setFetchError] = useState("");
+  const [translatedTitle, setTranslatedTitle] = useState("");
+  const [translationStatus, setTranslationStatus] = useState("idle");
   const [fetchMeta, setFetchMeta] = useState({
     date: "",
     time: "",
@@ -493,6 +555,35 @@ export function App() {
     ? Math.min(saved.length + dismissed.length + 1, totalToday)
     : 0;
 
+  useEffect(() => {
+    let cancelled = false;
+    async function translateCurrentTitle() {
+      if (!current?.title) {
+        setTranslatedTitle("");
+        setTranslationStatus("idle");
+        return;
+      }
+
+      setTranslationStatus("loading");
+      setTranslatedTitle("");
+      try {
+        const translated = await translateTitleToJapanese(current.title);
+        if (cancelled) return;
+        setTranslatedTitle(translated);
+        setTranslationStatus("ready");
+      } catch {
+        if (cancelled) return;
+        setTranslatedTitle("");
+        setTranslationStatus("error");
+      }
+    }
+
+    translateCurrentTitle();
+    return () => {
+      cancelled = true;
+    };
+  }, [current?.id, current?.title]);
+
   return (
     <main className="app-shell">
       <section
@@ -591,7 +682,14 @@ export function App() {
                     <span>{current.topic}</span>
                     <time>{current.date}</time>
                   </div>
-                  <h2>{current.title}</h2>
+                  <div className="title-stack">
+                    {translatedTitle && translatedTitle !== current.title ? (
+                      <h2 className="title-ja">{translatedTitle}</h2>
+                    ) : translationStatus === "loading" ? (
+                      <span className="translation-note">タイトル翻訳中</span>
+                    ) : null}
+                    <p className="title-original">{current.title}</p>
+                  </div>
                   <div className="tag-row">
                     {current.tags.slice(0, 3).map((tag) => (
                       <span key={tag}>{tag}</span>
