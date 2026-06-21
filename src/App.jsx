@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   TrendingUp,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -263,6 +264,7 @@ async function fetchCrossrefPapers(genre) {
 }
 
 function compactUrl(url) {
+  if (!url) return "source unavailable";
   return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
@@ -293,6 +295,11 @@ function writeTranslationCache(cache) {
   } catch {
     // Translation cache is nice-to-have; the English title remains available.
   }
+}
+
+function cachedJapaneseTitle(title) {
+  if (!title || hasJapanese(title)) return title || "";
+  return readTranslationCache()[title] || "";
 }
 
 async function translateTitleToJapanese(title) {
@@ -343,6 +350,7 @@ export function App() {
   const [papers, setPapers] = useState([]);
   const [saved, setSaved] = useState(() => readJson(SAVED_KEY, []));
   const [dismissed, setDismissed] = useState(() => readJson(DISMISSED_KEY, []));
+  const [showSaved, setShowSaved] = useState(false);
   const [index, setIndex] = useState(0);
   const [drag, setDrag] = useState({ x: 0, y: 0, active: false });
   const [status, setStatus] = useState("Preparing today's deck");
@@ -491,8 +499,9 @@ export function App() {
     if (!current) return;
     const paper = current;
     if (direction === "save") {
+      const savedPaper = { ...paper, savedAt: new Date().toISOString() };
       setSaved((items) =>
-        items.some((item) => item.id === paper.id) ? items : [paper, ...items],
+        items.some((item) => item.id === paper.id) ? items : [savedPaper, ...items],
       );
       setStatus("Saved to your reading list");
     } else {
@@ -523,6 +532,21 @@ export function App() {
   function openCurrent() {
     if (!current) return;
     window.open(current.url, "_blank", "noopener,noreferrer");
+  }
+
+  function openPaperUrl(url) {
+    if (!url) return;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }
+
+  function removeSavedPaper(id) {
+    setSaved((items) => items.filter((item) => item.id !== id));
+    setStatus("Removed from saved papers");
+  }
+
+  function clearSavedPapers() {
+    setSaved([]);
+    setStatus("Cleared saved papers");
   }
 
   function beginDrag(event) {
@@ -611,7 +635,11 @@ export function App() {
               {fetchState === "loading" ? "Fetching" : `Today ${totalToday} papers`}
             </strong>
           </button>
-          <button className="icon-button" aria-label="Saved papers">
+          <button
+            className="icon-button"
+            aria-label="Open saved papers"
+            onClick={() => setShowSaved(true)}
+          >
             <Bookmark size={23} />
             <small>{saved.length}</small>
           </button>
@@ -773,6 +801,79 @@ export function App() {
             and preprint records that include real source URLs.
           </p>
         </aside>
+
+        {showSaved ? (
+          <section className="saved-panel" role="dialog" aria-modal="true">
+            <header className="saved-panel-header">
+              <div>
+                <span>保存済み</span>
+                <strong>{saved.length} papers</strong>
+              </div>
+              <div className="saved-panel-actions">
+                {saved.length ? (
+                  <button className="text-button danger" onClick={clearSavedPapers}>
+                    全削除
+                  </button>
+                ) : null}
+                <button
+                  className="mini-icon-button"
+                  aria-label="Close saved papers"
+                  onClick={() => setShowSaved(false)}
+                >
+                  <X size={22} />
+                </button>
+              </div>
+            </header>
+
+            {saved.length ? (
+              <div className="saved-list">
+                {saved.map((paper) => {
+                  const titleJa = cachedJapaneseTitle(paper.title);
+                  return (
+                    <article className="saved-item" key={paper.id}>
+                      <div className="saved-item-meta">
+                        <span>{compactSource(paper.source)}</span>
+                        <span>{paper.topic}</span>
+                        <time>{paper.savedAt ? "保存済み" : paper.date}</time>
+                      </div>
+                      {titleJa && titleJa !== paper.title ? (
+                        <h2 className="saved-title-ja">{titleJa}</h2>
+                      ) : null}
+                      <p className="saved-title-original">{paper.title}</p>
+                      <button
+                        className="saved-url"
+                        onClick={() => openPaperUrl(paper.url)}
+                      >
+                        <Link size={17} />
+                        <span>{compactUrl(paper.url)}</span>
+                        <ArrowUpRight size={17} />
+                      </button>
+                      <div className="saved-item-actions">
+                        <button onClick={() => openPaperUrl(paper.url)}>
+                          <ArrowUpRight size={18} />
+                          開く
+                        </button>
+                        <button
+                          className="danger"
+                          onClick={() => removeSavedPaper(paper.id)}
+                        >
+                          <Trash2 size={18} />
+                          削除
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="saved-empty">
+                <BookmarkCheck size={30} />
+                <h2>保存した論文はまだありません</h2>
+                <p>右スワイプ、またはSaveボタンでここに残ります。</p>
+              </div>
+            )}
+          </section>
+        ) : null}
       </section>
     </main>
   );
