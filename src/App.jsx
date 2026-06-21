@@ -690,19 +690,6 @@ export function App() {
                     ) : null}
                     <p className="title-original">{current.title}</p>
                   </div>
-                  <div className="tag-row">
-                    {current.tags.slice(0, 3).map((tag) => (
-                      <span key={tag}>{tag}</span>
-                    ))}
-                    {current.tags.length > 3 ? (
-                      <span>+{current.tags.length - 3}</span>
-                    ) : null}
-                  </div>
-                  <p className="authors">
-                    {current.authors || "OpenAlex indexed authors"}
-                  </p>
-                  <p className="institution">{current.institution}</p>
-                  <p className="abstract">{current.abstract}</p>
                   <div className="paper-link">
                     <Link size={21} />
                     <a href={current.url} target="_blank" rel="noreferrer">

@@ -259,7 +259,12 @@ button {
 }
 
 .paper-body {
-  padding: 16px 19px 72px;
+  height: calc(472px - 115px);
+  overflow: hidden;
+  padding: 16px 19px 18px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 12px;
 }
 
 .meta-line {
@@ -283,35 +288,31 @@ button {
 }
 
 .title-stack {
-  margin: 12px 0 11px;
+  margin: 0;
   display: grid;
-  gap: 5px;
+  align-content: center;
+  gap: 10px;
+  min-height: 0;
 }
 
 .title-ja {
   margin: 0;
   color: #141619;
   font-family: ui-serif, Georgia, "Times New Roman", serif;
-  font-size: 22px;
-  line-height: 1.12;
+  font-size: 21px;
+  line-height: 1.14;
   letter-spacing: 0;
   font-weight: 640;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .title-original {
   margin: 0;
   color: #5e646d;
-  font-size: 13px;
-  line-height: 1.28;
+  font-size: 12px;
+  line-height: 1.3;
   font-weight: 700;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .translation-note {
@@ -320,68 +321,8 @@ button {
   font-weight: 800;
 }
 
-.tag-row {
-  display: flex;
-  gap: 7px;
-  overflow: hidden;
-  margin-bottom: 11px;
-}
-
-.tag-row span {
-  flex: 0 0 auto;
-  max-width: 116px;
-  padding: 7px 9px;
-  border-radius: 9px;
-  background: #eef8f3;
-  border: 1px solid #c9e0d7;
-  color: #07704a;
-  font-size: 13px;
-  line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.authors,
-.institution,
-.abstract {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.authors {
-  color: #0b744d;
-  font-weight: 750;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.institution {
-  color: #686d75;
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.abstract {
-  margin-top: 12px;
-  color: #202329;
-  font-size: 13px;
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .paper-link {
-  position: absolute;
-  left: 19px;
-  right: 19px;
-  bottom: 14px;
+  position: static;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) 24px;
   gap: 8px;
@@ -647,13 +588,12 @@ button {
     height: 96px;
   }
 
-  .title-ja {
-    font-size: 20px;
-    -webkit-line-clamp: 2;
+  .paper-body {
+    height: calc(420px - 96px);
   }
 
-  .abstract {
-    -webkit-line-clamp: 3;
+  .title-ja {
+    font-size: 19px;
   }
 
   .action-button svg {

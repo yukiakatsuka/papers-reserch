@@ -1,4 +1,4 @@
-const CACHE_NAME = "paperswipe-pwa-v3";
+const CACHE_NAME = "paperswipe-pwa-v4";
 const APP_SHELL = [
   "./",
   "index.html",
